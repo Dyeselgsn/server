@@ -33,46 +33,23 @@ use OCA\Files\Service\OwnershipTransferService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
 use OCP\Files\IRootFolder;
-use OCP\ILogger;
 use OCP\IUser;
 use OCP\IUserManager;
 use OCP\Notification\IManager as NotificationManager;
+use Psr\Log\LoggerInterface;
 use function ltrim;
 
 class TransferOwnership extends QueuedJob {
-
-	/** @var IUserManager $userManager */
-	private $userManager;
-
-	/** @var OwnershipTransferService */
-	private $transferService;
-
-	/** @var ILogger */
-	private $logger;
-
-	/** @var NotificationManager */
-	private $notificationManager;
-
-	/** @var TransferOwnershipMapper */
-	private $mapper;
-	/** @var IRootFolder */
-	private $rootFolder;
-
-	public function __construct(ITimeFactory $timeFactory,
-								IUserManager $userManager,
-								OwnershipTransferService $transferService,
-								ILogger $logger,
-								NotificationManager $notificationManager,
-								TransferOwnershipMapper $mapper,
-								IRootFolder $rootFolder) {
+	public function __construct(
+		ITimeFactory $timeFactory,
+		private IUserManager $userManager,
+		private OwnershipTransferService $transferService,
+		private LoggerInterface $logger,
+		private NotificationManager $notificationManager,
+		private TransferOwnershipMapper $mapper,
+		private IRootFolder $rootFolder,
+		) {
 		parent::__construct($timeFactory);
-
-		$this->userManager = $userManager;
-		$this->transferService = $transferService;
-		$this->logger = $logger;
-		$this->notificationManager = $notificationManager;
-		$this->mapper = $mapper;
-		$this->rootFolder = $rootFolder;
 	}
 
 	protected function run($argument) {
@@ -87,7 +64,10 @@ class TransferOwnership extends QueuedJob {
 		$nodes = $userFolder->getById($fileId);
 
 		if (empty($nodes)) {
-			$this->logger->alert('Could not transfer ownership: Node not found');
+			$this->logger->alert(
+				'Could not transfer ownership: Node not found',
+				['app' => 'files'],
+			);
 			$this->failedNotication($transfer);
 			return;
 		}
@@ -97,13 +77,19 @@ class TransferOwnership extends QueuedJob {
 		$destinationUserObject = $this->userManager->get($destinationUser);
 
 		if (!$sourceUserObject instanceof IUser) {
-			$this->logger->alert('Could not transfer ownership: Unknown source user ' . $sourceUser);
+			$this->logger->alert(
+				'Could not transfer ownership: Unknown source user ' . $sourceUser,
+				['app' => 'files'],
+			);
 			$this->failedNotication($transfer);
 			return;
 		}
 
 		if (!$destinationUserObject instanceof IUser) {
-			$this->logger->alert("Unknown destination user $destinationUser");
+			$this->logger->alert(
+				"Unknown destination user $destinationUser",
+				['app' => 'files'],
+			);
 			$this->failedNotication($transfer);
 			return;
 		}
@@ -116,7 +102,13 @@ class TransferOwnership extends QueuedJob {
 			);
 			$this->successNotification($transfer);
 		} catch (TransferOwnershipException $e) {
-			$this->logger->logException($e);
+			$this->logger->error(
+				$e->getMessage(),
+				[
+					'app' => 'files',
+					'exception' => $e,
+				],
+			);
 			$this->failedNotication($transfer);
 		}
 
